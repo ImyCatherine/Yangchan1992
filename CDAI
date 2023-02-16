@@ -1,0 +1,1636 @@
+#Associations of Composite Dietary Antioxidant Index With Cardiovascular Disease Mortality Among Patients With Type 2 Diabetes
+#data extract-----
+d_demo <- db_demo(years = 1999:2018,
+                  ageyr = "age",sex = "sex",
+                  eth1 = "eth",edu = "edu",
+                  poverty = "poverty",
+                  wtint4yr = T,
+                  wtint2yr = T,Year = T)
+d_demo$nhs_wt <-ifelse(d_demo$Year %in% c("1999-2000","2001-2002"),
+                      2/10*d_demo$wtint4yr,1/10*d_demo$wtint2yr)
+d_demo <- drop_col(d_demo,"wtint2yr","wtint4yr")
+nrow(d_demo)
+#101316
+d_demo <- d_demo[d_demo$age>=18,]
+nrow(d_demo)
+#59204
+d_DM <- diag_DM(years = 1999:2018,
+                told = TRUE,
+                HbA1c = TRUE,
+                fast_glu = TRUE,
+                OGTT2 = TRUE,
+                rand_glu = TRUE,
+                drug = TRUE,
+                DM1 = FALSE,
+                cat = TRUE,
+                Year = FALSE,
+                join = "left",
+                exclude_Pregnant = TRUE)
+nrow(d_DM)
+#96811
+d0 <- Left_Join(d_demo,d_DM)
+d0 <- select_row(d0,d0$DM=="DM")
+#origin: 59204
+#select: 11085 (19%)
+pregnat <- diag_Pregnant(years = 1999:2018,join = "left")
+nrow(pregnat)
+#101316
+table(pregnat$Pregnant)
+#1753
+d1 <- Left_Join(d0,pregnat)
+d1 <- drop_row(d1,d1$Pregnant=="yes")
+#origin:11085
+#drop:1670(15%)
+#left:9415
+d1 <- drop_row(d1,is.na(d1$DM))
+#origin:9415
+#drop:3(0%)
+#left:9412
+d1 <- drop_col(d1,"Pregnant")
+
+died <- db_mort(years = 1999:2018,varLabel = TRUE,
+                codebook = TRUE,
+                Year = FALSE,
+                join = "left")
+died <- drop_row(died, is.na(died$mortstat))
+nrow(died)
+#origin:101316
+#drop:42252(42%)
+#left:59064
+d_CDAI <- dex_CDAI(years = 1999:2018, 
+                   join = "left",round = 3)
+d_CDAI <- drop_row(d_CDAI,is.na(d_CDAI$CDAI))
+#origin:96766
+#drop:17496(18%)
+#left:79270
+d2 <- Left_Join(d1,d_CDAI)
+d2 <- drop_row(d2,is.na(d2$CDAI))
+#origin:9412
+#drop:1856(20%)
+d2 <- Left_Join(d2,died)
+d2 <- drop_row(d2,is.na(d2$mortstat))
+#origin:7556
+#drop:5(0%)
+#left:7551
+colnames(d2)[colnames(d2)=="ucod_leading"] <- "cause" 
+colnames(d2)[colnames(d2)=="mortstat"] <- "status" 
+colnames(d2)[colnames(d2)=="permth_int"] <- "Time"
+d2$status = ifelse(d2$status =="Assumed deceased",
+                    1,0)
+#quantile(d2$CDAI)
+#0%     25%     50%     75%    100% 
+#-7.4660 -2.1985 -0.2180  2.2130 =49.7610 
+#Q1 -7.4660 -2.1985
+#Q2   -2.1985 -0.2180
+#Q3    -0.2180  2.2130
+#Q4 2.2130 =49.7610 
+bu_x <- d2$CDAI
+d2$CDAI_group[bu('(   , -2.1985)')]<-"Q1"
+d2$CDAI_group[bu('[-2.1985,-0.2180)')]<-"Q2"
+d2$CDAI_group[bu('[-0.2180,2.2130)')]<-"Q3"
+d2$CDAI_group[bu('[2.2130,      )')]<-"Q4"
+freq_count(d2,x="CDAI_group",round = 2)
+d2$CDAI_group <- factor(d2$CDAI_group,levels = c("Q3",
+                                                   "Q1",
+                                                   "Q2",
+                                                   "Q4"))
+
+write.csv(d2,"d2.csv")
+d2<- read.csv("CDAI ALL.csv")
+CVD <- diag_CVD(years = 1999:2018,join = "left")
+ASCVD <- diag_ASCVD(years = 1999:2018,join = "left")
+d0 <- Left_Join(d2,CVD,ASCVD)
+d0 <- drop_row(d0,d0$CVD=="yes")
+d0 <- drop_row(d0,d0$ASCVD=="yes")
+#origin:7551
+#drop:1982(26%)
+#left:5569
+
+
+a2$CDAI_group <- factor(a2$CDAI_group,levels = c("Q1",
+                                                 "Q2",
+                                                 "Q3",
+                                                 "Q4"))
+dd2 <- svydesign(id=~1,strata = ~sdmvstra,
+                  weights = ~nhs_wt, 
+                 data = a2)
+
+
+#KM with Risk table
+a1<- read.csv("CDAI ALL.csv")
+a2 <- select_row(a1,!a1$cause%in%c("All other causes (residual)",
+                                   "Influenza and pneumonia (J09-J18)",
+                                   "Malignant neoplasms (C00-C97)",
+                                   "Chronic lower respiratory diseases (J40-J47)",
+                                   "Diabetes mellitus (E10-E14)",
+                                   "Alzheimer's disease (G30)", 
+                                   "Nephritis",
+                                   "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+                                   "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+                                   "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+a2$CDAI_group <- factor(a2$CDAI_group,levels = c("Q1",
+                                                 "Q2",
+                                                 "Q3",
+                                                 "Q4"))
+dd2 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = a2)
+S2 <- svykm(Surv(Time,status==0)~CDAI_group,design = dd2)
+svy_kmplot(S2,round = 2,axis.title = 10,
+           legend.title.size = 10,
+           legend.text.size = 8,
+           risktable = TRUE,
+           freq = T,
+           weighted.prop = T,
+           rt.title.xy = NULL,
+           rt.title = "Risk Table",
+           rt.title.color = "black",
+           rt.title.size = 2,
+           rt.text.y = NULL,
+           color = NULL,
+           rt.text.size = 2)
+#mortality 
+model0 <- svycoxph(Surv(Time,status==0)~CDAI_group, design = dd2)
+summary(model0)
+install.packages("gtsummary")
+library(gtsummary)
+table1<- tbl_regression(model0,exponentiate = TRUE)
+install.packages("flextable")
+library(flextable)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "tab1.docx")
+
+tapply(d2$status,d2$CDAI_group,sum)
+table(tapply(d2$status,d2$CDAI_group,sum),
+      tapply(d2$status,d2$CDAI_group,length))
+
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI), design = dd2)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,4), design = dd2)
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                   size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI", y="HR (95%CI)")
+print(P1)
+
+
+
+
+#CVD-----
+library(tidyverse)
+d_cvd <- d2 %>% filter(d2$cause %in% c("Diseases of heart (I00-I09, I11, I13, I20-I51)",
+                               "Cerebrovascular diseases (I60-I69)"))
+d_cvd <- d2 %>% filter(!d2$cause %in% c(
+  "All other causes (residual)",
+  "Influenza and pneumonia (J09-J18)",
+  "Malignant neoplasms (C00-C97)",
+  "Chronic lower respiratory diseases (J40-J47)",
+  "Diabetes mellitus (E10-E14)",
+  "Alzheimer's disease (G30)", 
+  "Nephritis",
+  "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+  "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+  "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+#6070 
+write.csv(d_cvd,"d_cvd.csv")
+d_cvd <- read.csv("CDAI CVD.csv")
+dd3 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = d_cvd)
+model_1 <- svycoxph(Surv(Time,status==0)~CDAI_group, design = dd3)
+summary(model_1)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "tab2.docx")
+
+tapply(d_cvd$status,d_cvd$CDAI_group,sum)
+tapply(d_cvd$status,d_cvd$CDAI_group,length)
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI), design = dd3)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4), design = dd3)
+r1 <- RCS(f1)
+ggplot(r1)
+#model 2----
+#all cause
+model_1 <- svycoxph(Surv(Time,status==0)~CDAI_group+age+sex
+                    +eth, design = dd2)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "all tab2.docx")
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+age+sex
+               +eth, design = dd2)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,3)+age+sex
+               +eth, design = dd2)
+r1 <- RCS(f1)
+ggplot(r1)
+
+#model 3
+model_1 <- svycoxph(Surv(Time,status)~CDAI_group+
+                      edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                    design = dd2)
+summary(model_1)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "all tab3.docx")
+
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex
+               +eth, design = dd2)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,4)+age+sex
+               +eth, design = dd2)
+r1 <- RCS(f1)
+ggplot(r1)
+
+#model 4
+model_1 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex
+                    +eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+                    design = dd2)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "all tab4.docx")
+
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex
+               +eth+edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+               design = dd2)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,4)+age+sex
+               +eth, design = dd2)
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI", 
+       y="Hazard Ratio (95%CI)")
+print(P1)
+
+#CVD
+model_1 <- svycoxph(Surv(Time,status==0)~CDAI_group+age+sex
+                    +eth, design = dd3)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "tab2.docx")
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+age+sex
+               +eth, design = dd3)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4)+age+sex
+               +eth, design = dd3)
+r1 <- RCS(f1)
+ggplot(r1)
+
+
+#model 3
+a1$cause<- Recode(a1$cause,
+                     "All other causes (residual)::other",
+                     "Influenza and pneumonia (J09-J18)::lung",
+                     "Malignant neoplasms (C00-C97)::ca",
+                     "Diseases of heart (I00-I09, I11, I13, I20-I51)::hert",
+                     "Chronic lower respiratory diseases (J40-J47)::Llung",
+                     "Diabetes mellitus (E10-E14)::DM",
+                     "Cerebrovascular diseases (I60-I69)::vascular",
+                     "Alzheimer's disease (G30)::AD", 
+                     "Nephritis::kidney",
+                     "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)::kidney", 
+                     "Accidents (unintentional injuries) (V01-X59, Y85-Y86)::Accidents",
+                     "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)::kidney",
+                     "NA::no" )
+write.csv(d2,"CDAI merge.csv")
+dd_cvd <- read.csv("CDAI CVD.csv")
+dd3 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = dd_cvd)
+model_1 <- svycoxph(Surv(Time,status==0)~CDAI_group+
+                    edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                    design = dd3)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "cvdtab3.docx")
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+               design = dd3)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4)
+               +edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, design = dd3)
+r1 <- RCS(f1)
+ggplot(r1)
+#model 4
+model_1 <- svycoxph(Surv(Time,status==0)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                    design = dd3)
+summary(model_1)
+table1<- tbl_regression(model_1,exponentiate = TRUE)
+tab1 <- as_flex_table(table1)
+save_as_docx(tab1,path = "cvdtab4.docx")
+
+
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+age+sex+eth
+               +edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+               design = dd3)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4)
+               +age+sex+eth+edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd3)
+
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI", 
+       y="Hazard Ratio (95%CI)")
+print(P1)
+# CA-----
+dd_ca <- read.csv("CDAI ca.csv")
+dd3 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = dd_ca)
+model_0 <- svycoxph(Surv(Time,status==0)~CDAI_group, design = dd3)
+summary(model_0)
+
+
+tapply(dd_ca$status,dd_ca$CDAI_group,sum)
+tapply(dd_ca$status,dd_ca$CDAI_group,length)
+
+model_2 <- svycoxph(Surv(Time,status==0)~CDAI_group+age+sex
+                    +eth, design = dd3)
+summary(model_2)
+model_3 <- svycoxph(Surv(Time,status==0)~CDAI_group+
+                      edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                    design = dd3)
+summary(model_2)
+model_4 <- svycoxph(Surv(Time,status==0)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+
+                      PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                    design = dd3)
+summary(model_2)
+
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+age+sex+eth
+               +edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+               design = dd3)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4)
+               +age+sex+eth+edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd3)
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI", 
+       y="Hazard Ratio (95%CI)")
+print(P1)
+
+#kidney-----
+
+dd_k0 <- select_row(a1,a1$cause=="no")
+dd_k <- select_row(a1,a1$cause=="kidney")
+dd_k2 <- select_row(a1,a1$cause=="kidney"|
+                      a1$cause=="no")
+dd_k <- select_col(dd_k2,"seqn","sdmvpsu","sdmvstra","age",
+                   "sex","eth","poverty","CDAI",
+                   "edu","nhs_wt","status","cause","Time",
+                   "CDAI_group","BMI","hypertention","FBG",
+                   "TG","TC","HDL","LDL","kcal","HEI","alconhol",
+                   "PA","smoke", "HbA1c",
+                   "duration","medicine_use")
+write.csv(dd_k,"yc1013.csv")
+dd4 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = dd_k)
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+BMI,
+               design = dd4)
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+PA,
+               design = dd4)
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+TG,
+               design = dd4)
+f0 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+medicine_use,
+               design = dd4)
+f5 <- svycoxph(Surv(Time,status==0)~rcs(CDAI)+age+sex+eth
+               +edu+poverty+hypertention+kcal+HEI+smoke
+               +HbA1c+TC+HDL+BMI+PA+TG+medicine_use,
+               design = dd4,iter.max=200)
+
+
+
+
+#不可以duration，BMI,PA，TG+medicine_use
+optimal_nKnots(f0)
+f3 <- svycoxph(Surv(Time,status==0)~rcs(CDAI,4)
+               +age+sex+eth+edu+poverty+BMI+hypertention+kcal+HEI+
+                 PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd4)
+r1 <- RCS(f3,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "End-age kikney mortality", x="CDAI", 
+       y="Hazard Ratio (95%CI)")
+print(P1)
+
+
+#Covariates -----
+d0 <- dex_PhysicalActivity(years =1999:2018,walk_bicycle = TRUE,
+                           WorkActivity = TRUE,
+                           RecreationalActivity = TRUE,
+                           activity = TRUE,
+                           MET = TRUE,
+                           week = TRUE,
+                           direction = c("m", "v", "no"),
+                           component = TRUE,
+                           Year = TRUE,
+                           join = "left")
+CC_active <- (d0$PA_total_MET>=180)
+d0$physicalactivy.user[CC_active] <- "active"
+cc_inactive <- (d0$PA_total_MET<180)
+d0$physicalactivy.user[cc_inactive] <- "inactive"
+d_PA <- d0[,c("seqn","Year","physicalactivy.user")]
+d_PA <- drop_row(d_PA,is.na(d_PA$physicalactivy.user))
+#origin:90816
+#drop:50793(56%)
+#left:40023
+d_drink <- db_Alcohol.drinks(years = 1999:2018,
+                             Year = FALSE, join = "left")
+sex <- db_demo(years = 1999:2018,Year = TRUE,sex = TRUE,psu_strat = F) |> 
+  db_Alcohol.drinks()
+ck_heavy <- (sex$sex=="Femal" & sex$drinks.day>=1)|
+  (sex$sex=="Male" & sex$drinks.day>=1)
+sex$alconhol.user[ck_heavy] <- "heavy"
+ck_moderate <- (sex$sex=="Femal" & sex$drinks.day<1)|
+  (sex$sex=="Male" & sex$drinks.day<2)
+sex$alconhol.user[ck_moderate] <- "moderate"
+ck_none <- !(ck_heavy | ck_moderate)
+sex$alconhol.user[ck_none] <- "none"
+
+d_drink <- sex[,c("seqn","Year","alconhol.user")]
+
+d_drink <- Left_Join(d_drink,sex) 
+
+d_drink <- drop_row(d_drink,is.na(d_drink$alconhol.user.y)) 
+d_drink <- drop_col(d_drink,"alconhol.user.x")
+head(d_drink)
+d_drink <- drop_col(d_drink,"drinks.day")
+d_drink <- drop_col(d_drink,"Year.x" , "Year.y","sex")
+#origin:101316
+#drop:32875(32%)
+#left:68441
+d_smoking <- diag_smoke(years = 1999:2018,smoke = TRUE,
+                        smoking_years = FALSE,
+                        never0 = FALSE,
+                        former1 = 1,
+                        now2 = 2,join = "left") 
+d_smoking <- drop_row(d_smoking,is.na(d_smoking$smoke))
+#origin:64874
+#drop:8956(14%)
+#left:55918
+d_BMI <- db_bodyMeasure(years = 1999:2018,BMI_kg.m2 = "BMI")
+d_BMI <- drop_row(d_BMI,is.na(d_BMI$BMI))
+nrow(d_BMI)
+#origin:96766
+#drop:8967(9%)
+#left:87799
+n <- nhs_tsv("bpq",years = 1999:2018)
+d_BP <- nhs_read(n,"bpq020:hypertention")
+d_BP <- drop_row(d_BP,is.na(d_BP$hypertention))
+#origin:63592
+#drop:373(1%)
+#left:63219
+
+d_HEI<- dex_HEI(years = 1999:2018,version = "2015",method = "ssum",
+                dietary = "tot",day = 1,component = FALSE)
+nrow(d_HEI)
+#82533
+d_Bioche <- db_HemalBiochemistry(years = 1999:2018,fast_glucose_mmol.L = TRUE,
+                                 HbA1c = TRUE,
+                                 fast_insulin_pmol.L = TRUE,
+                                 Alt = TRUE,
+                                 Ast = TRUE,
+                                 creatinine_umol.L = TRUE,
+                                 fast_triglyceride_mmol.L = TRUE,
+                                 fast_total_cholesterol_mmol.L = TRUE,
+                                 hdl_cholesterol_mmol.L = TRUE,
+                                 ldl_cholesterol_mmol.L = TRUE,
+                                 join = "left")
+colnames(d_Bioche)[colnames(d_Bioche)=="hdl_cholesterol_mmol.L"] <- "HDL" 
+colnames(d_Bioche)[colnames(d_Bioche)=="fast_total_cholesterol_mmol.L"] <- "TC" 
+colnames(d_Bioche)[colnames(d_Bioche)=="fast_triglyceride_mmol.L"] <- "TG" 
+colnames(d_Bioche)[colnames(d_Bioche)=="creatinine_umol.L"] <- "CR" 
+colnames(d_Bioche)[colnames(d_Bioche)=="ldl_cholesterol_mmol.L"] <- "LDL" 
+colnames(d_Bioche)[colnames(d_Bioche)=="fast_glucose_mmol.L"] <- "FBG" 
+colnames(d_Bioche)[colnames(d_Bioche)=="fast_insulin_pmol.L"] <- "F_insulin"
+#diabetic medicine use---
+DM <- nhs_tsv("diq",years = 1999:2018)
+diabtic_years <- nhs_read(DM,"did010:diabetes",
+                          "did040:first age","diq050:insulin use",
+                          "diq070:Take diabetic pills to lower blood sugar")
+diabtic_years <- add_col(diabtic_years,"medicine_use","only_insulin",
+                   diabtic_years$insulinuse=="Yes"
+                   &diabtic_years$Takediabeticpillstolowerbloodsugar=="No")
+diabtic_years <- add_col(diabtic_years,"medicine_use","only_medicine",
+                   diabtic_years$insulinuse=="No"
+                   &diabtic_years$Takediabeticpillstolowerbloodsugar=="Yes")
+diabtic_years <- add_col(diabtic_years,"medicine_use","insulin_medicine",
+                   diabtic_years$insulinuse=="Yes"
+                   &diabtic_years$Takediabeticpillstolowerbloodsugar=="Yes")
+diabtic_years <- add_col(diabtic_years,"medicine_use","none",
+                   diabtic_years$insulinuse=="No"
+                   &diabtic_years$Takediabeticpillstolowerbloodsugar=="No")
+diabtic_years <- drop_col(diabtic_years,"insulinuse" ,
+                    "Takediabeticpillstolowerbloodsugar",
+                    "Year.y","Year.x.x","Year.y.y")
+c1 <- Left_Join(d2,d_BMI,d_BP,d_Bioche,d_HEI,d_drink,d_PA,d_smoking,
+                diabtic_years)
+#肿瘤提取-----
+d_cancer <- nhs_tsv("mcq",years = 1999:2018)
+d_cancer <- nhs_read(d_cancer,"mcq220:Cancer")
+
+#构建模型1-age sex eth-----
+write.csv(c1,"c1.csv") 
+c1<- read.csv("c1.csv")
+c_m1 <- select_col(c1,"X", "Year.x", "seqn","sdmvpsu","sdmvstra",
+                   "age" ,"sex","eth","status","Time",
+                   "nhs_wt","CDAI_group")
+c_m1 <- na.omit(c_m1)
+nrow(c_m1)
+#7551
+#model3
+
+
+
+#-----
+dd <- datadist(c_m1)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +age+sex+eth,
+           data=c_m1)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI-model1", y="HR (95%CI)")
+print(P1)
+anova(fit)
+
+c_cvd <- c1 %>% filter(!c1$cause %in% c(
+  "All other causes (residual)",
+  "Influenza and pneumonia (J09-J18)",
+  "Malignant neoplasms (C00-C97)",
+  "Chronic lower respiratory diseases (J40-J47)",
+  "Diabetes mellitus (E10-E14)",
+  "Alzheimer's disease (G30)", 
+  "Nephritis",
+  "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+  "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+  "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+cvd1 <- select_col(c_cvd,"X", "Year.x", "seqn","sdmvpsu","sdmvstra",
+                   "age" ,"sex","eth","status","Time",
+                   "nhs_wt","CDAI_group")
+c_1 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = cvd1)
+model2 <-svycoxph(Surv(Time,status==0)~CDAI_group+age+sex+eth,
+                  design = cvd1)
+exp(cbind("HR"=coef(model2),confint(model2)))
+#HR     2.5 %    97.5 %
+#CDAI_groupQ2                           0.8353615 0.6604305 1.0566273
+#CDAI_groupQ3                           0.6057752 0.4645559 0.7899234
+#CDAI_groupQ4                           0.4659794 0.3505031 0.6195003
+dd <- datadist(c_cvd)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +age+sex+eth,
+           data=c_cvd)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI-model1", y="HR (95%CI)")
+print(P1)
+anova(fit)
+#Factor     Chi-Square d.f. P     
+#CDAI        31.99     3    <.0001
+#Nonlinear  11.54     2    0.0031
+#模型2全因———----
+a1$edu <- Recode(a1$edu,
+                 "Less Than 9th Grade::<high school",                              
+                "high School Grad/GED or Equivalent::high school",               
+                 "9-11th Grade (Includes 12th grade with no diploma)::<high school",
+                 "College Graduate or above::>=college",                        
+                 "Some College or AA degree::>=college",                         
+                 "More than high school::high school",                          
+                 "High School Graduate::high school",                            
+                 "9th Grade::<high school",                                                
+                  "11th Grade::<high school",                                       
+                  "High school graduate/GED or equivalent::high school" ,           
+                  "Less than 9th grade::<high school",                              
+                  "Some college or AA degree::>=college",                         
+                  "College graduate or above::>=college",                       
+                  "9-11th grade (Includes 12th grade with no diploma)::<high school",
+                  "GED or equivalent::>=college",                               
+                  "11th grade::<high school",                                      
+                  "12th grade, no diploma::<high school",                            
+                  "High school graduate::high school",                             
+                  "10th grade::<high school")
+c1$edu <- Recode(c1$edu,                   
+                 "High School Grad/GED or Equivalent::high school")
+c1$HbA1c <- ifelse(c1$HbA1c<7,"<7",">=7")
+e1 <- select_col(c1,"X", "Year.x", "seqn","sdmvpsu","sdmvstra",
+                 "age" ,"sex","eth","status","Time",
+                 "nhs_wt","CDAI_group","poverty","edu","BMI",
+                 "hypertention","kcal","HEI","PA","smoke",
+                   "duration","FBG","CDAI",
+                 "HbA1c","TG","TC","HDL","LDL","medicine_use")
+str(e1) 
+e_e1 <- na.omit(e1)
+nrow(e_e1)
+#750
+ec1 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = e_e1)
+model3 <-svycoxph(Surv(Time,status==0)~CDAI_group+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = ec1)
+exp(cbind("HR"=coef(model3),confint(model3)))
+
+summary(model3)
+
+
+dd <- datadist(e_e1)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=e_e1)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+summary(HR)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI-model2", y="HR (95%CI)")
+print(P1)
+anova(fit)
+
+model3 <-svycoxph(Surv(Time,status==0)~CDAI_group+age+sex+eth+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = ec1)
+exp(cbind("OR"=coef(model3),confint(model3)))
+
+model4 <-svycoxph(Surv(Time,status==0)~CDAI_group+age+sex+eth+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = dc1)
+exp(cbind("OR"=coef(model4),confint(model4)))
+
+dd <- datadist(c1)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +age+sex+eth+edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=c1)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+summary(HR)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI-model3", y="HR (95%CI)")
+print(P1)
+anova(fit)
+
+
+#CVD-----
+c_cvd <- c1 %>% filter(!c1$cause %in% c(
+  "All other causes (residual)",
+  "Influenza and pneumonia (J09-J18)",
+  "Malignant neoplasms (C00-C97)",
+  "Chronic lower respiratory diseases (J40-J47)",
+  "Diabetes mellitus (E10-E14)",
+  "Alzheimer's disease (G30)", 
+  "Nephritis",
+  "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+  "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+  "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+e_cvd1 <- select_col(c_cvd,"X", "Year.x", "seqn","sdmvpsu","sdmvstra",
+                 "age" ,"sex","eth","status","Time",
+                 "nhs_wt","CDAI_group","poverty","edu","BMI",
+                 "hypertention","kcal","HEI","PA","smoke",
+                 "duration","FBG","CDAI",
+                 "HbA1c","TG","TC","HDL","LDL","medicine_use")
+
+f_cvd <- na.omit(e_cvd1)
+nrow(f_cvd)
+#704
+c_1 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = f_cvd)
+model2 <-svycoxph(Surv(Time,status==1)~CDAI_group+edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = c_1)
+exp(cbind("OR"=coef(model2),confint(model2)))
+#
+dd <- datadist(f_cvd)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4)+
+             edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=f_cvd)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI-model2", y="HR (95%CI)")
+print(P1)
+anova(fit)
+#result-----
+
+model3 <-svycoxph(Surv(Time,status==1)~CDAI_group+age+sex+eth+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = c_1)
+exp(cbind("OR"=coef(model3),confint(model3)))
+
+dd <- datadist(c_cvd)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +age+sex+eth+
+             edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=c_cvd)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI-model3", y="HR (95%CI)")
+print(P1)
+
+#all cause----
+model3 <-svycoxph(Surv(Time,status==1)~CDAI_group+age+sex+eth+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = ec1)
+exp(cbind("OR"=coef(model3),confint(model3)))
+summary(model3)
+
+
+#rcs-----
+dd <- datadist(e_e1)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4) +age+sex+eth+
+             edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=e_e1)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+summary(HR)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI-model3", y="HR (95%CI)")
+print(P1)
+anova(fit)
+
+
+
+#CVD------
+model3 <-svycoxph(Surv(Time,status==1)~CDAI_group+age+sex+eth+
+                    edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                    duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+                  design = c_1)
+exp(cbind("OR"=coef(model3),confint(model3)))
+summary(model3)
+
+
+# RCS----
+dd <- datadist(f_cvd)
+options(datadist='dd') 
+fit <- cph(Surv(Time,status==0) ~ rcs(CDAI,4)+age+sex+eth+
+             edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+             duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,
+           data=f_cvd)
+fit=update(fit)
+HR<-Predict(fit,CDAI,fun=exp,ref.zero = TRUE)
+P1<-ggplot()+geom_line(data=HR, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=HR, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI-model3", y="HR (95%CI)")
+print(P1)
+anova(fit)
+# tabele 2------
+a1<- read.csv("CDAI ALL.csv")
+
+a1 <- select_row(a1,a1$Time>=24)
+a1 <- drop_col(a1,"X.1","DM","eligstat","diabetes","hyperten",
+               "permth_exm","Alt","Ast","CR","firstage")
+bu_x <- a1$BMI
+a1$BMI_group[bu('(   , 25)')]<-"<25.0"
+a1$BMI_group[bu('[25.0,29.9)')]<-"25.0-29.9"
+a1$BMI_group[bu('[30,      )')]<-">=30.0"
+freq_count(a1,x="BMI_group",round = 2)
+bu_x <- a1$poverty
+a1$poverty_group[bu('(   , 1.0)')]<-"<1.0"
+a1$poverty_group[bu('[1.0,3.0]')]<-"1.0-3.0"
+a1$poverty_group[bu('(3.0,      )')]<-">3.0"
+freq_count(a1,x="poverty_group",round = 2)
+bu_x <- a1$duration
+a1$duration_group[bu('(   , 3)')]<-"<3"
+a1$duration_group[bu('[3,10]')]<-"3-10"
+a1$duration_group[bu('(10,      )')]<-">10"
+freq_count(a1,x="duration_group",round = 2)
+bu_x <- a1$HbA1c
+a1$HbA1c_group[bu('(   , 7)')]<-"<7.0"
+a1$HbA1c_group[bu('[7,    )')]<-">=7.0"
+freq_count(a1,x="HbA1c_group",round = 2)
+H1 <- drop_row(a1,is.na(a1$HEI))
+quantile(H1$HEI)
+bu_x <- a1$HEI
+a1$HEI_group[bu('(   , 42.36)')]<-"Quartile 1(<42.36)"
+a1$HEI_group[bu('[42.36,51.65)')]<-"Quartile 2(42.36-51.65)"
+a1$HEI_group[bu('[51.65,61.46)')]<-"Quartile 3(51.65-61.46)"
+a1$HEI_group[bu('[61.46,      )')]<-"Quartile 4(>=61.46)"
+freq_count(a1,x="HEI_group",round = 2)
+H1 <- drop_row(a1,is.na(a1$kcal))
+quantile(H1$kcal)
+bu_x <- a1$kcal
+a1$kcal_group[bu('(   , 1270.79)')]<-"Quartile 1(<1270.79)"
+a1$kcal_group[bu('[1270.79,1714.00)')]<-"Quartile 2(1270.79-1714.00)"
+a1$kcal_group[bu('[1714.00,2296.00)')]<-"Quartile 3(1714.00-2296.00)"
+a1$kcal_group[bu('[2296.00,      )')]<-"Quartile 4(>=2296.00)"
+freq_count(a1,x="kcal_group",round = 2)
+
+H1 <- drop_row(a1,is.na(a1$TC))
+quantile(H1$TC)
+bu_x <- a1$TC
+a1$TC_group[bu('(   , 4.11)')]<-"Quartile 1(<4.11)"
+a1$TC_group[bu('[4.11,4.81)')]<-"Quartile 2(4.11-4.81)"
+a1$TC_group[bu('[4.81, 5.64)')]<-"Quartile 3(4.81-5.64)"
+a1$TC_group[bu('[5.64,      )')]<-"Quartile 4(5.64-21.02)"
+freq_count(a1,x="TC_group",round = 2)
+H1 <- drop_row(a1,is.na(a1$TG))
+quantile(H1$TG)
+bu_x <- a1$TG
+a1$TG_group[bu('(   , 1.061)')]<-"Quartile 1(<1.061)"
+a1$TG_group[bu('[1.061,1.547 )')]<-"Quartile 2(1.061-1.547 )"
+a1$TG_group[bu('[1.547 , 2.258)')]<-"Quartile 3(1.547 -2.258)"
+a1$TG_group[bu('[2.258,      )')]<-"Quartile 4(>2.258)"
+freq_count(a1,x="TG_group",round = 2)
+
+H1 <- drop_row(a1,is.na(a1$HDL))
+quantile(H1$HDL)
+bu_x <- a1$HDL
+a1$HDL_group[bu('(   , 1.00)')]<-"Quartile 1(<1.00)"
+a1$HDL_group[bu('[1.00,1.19)')]<-"Quartile 2(1.00-1.19)"
+a1$HDL_group[bu('[1.19, 1.45)')]<-"Quartile 3(1.19-1.45)"
+a1$HDL_group[bu('[1.45,      )')]<-"Quartile 4(>1.45)"
+freq_count(a1,x="HDL_group",round = 2)
+
+H1 <- drop_row(a1,is.na(a1$LDL))
+quantile(H1$LDL)
+bu_x <- a1$LDL
+a1$LDL_group[bu('(   , 2.095)')]<-"Quartile 1(<2.095 )"
+a1$LDL_group[bu('[2.095 ,2.715)')]<-"Quartile 2(2.095 -2.715)"
+a1$LDL_group[bu('[2.715, 3.388)')]<-"Quartile 3(2.715-3.388)"
+a1$LDL_group[bu('[3.388,      )')]<-"Quartile 4(>3.388)"
+freq_count(a1,x="LDL_group",round = 2)
+
+a11 <- select_col(a1,"sdmvpsu","sdmvstra","nhs_wt",
+                 "age","sex","eth","edu","poverty_group",
+                 "BMI_group","CDAI_group",
+                 "alconhol","PA","smoke","HbA1c_group",
+                 "duration_group","HEI_group","kcal_group",
+                 "hypertention","TC_group","TG_group",
+                 "HDL_group","LDL_group")
+a12 <- na.omit(a11)
+nhs <- svy_design(a12)
+svy_tableone(design = nhs,cv=c("age"),
+             gv= c("sex","eth","edu","poverty_group","BMI_group",
+                   "alconhol","PA","smoke","HbA1c_group",
+                   "duration_group","HEI_group","kcal_group",
+                   "hypertention","TC_group","TG_group",
+                   "HDL_group","LDL_group" ),
+             by ="CDAI_group",
+             c_ci = TRUE,
+             total = TRUE,
+             round = 1,
+             xlsx = "table_22.xlsx")
+
+
+
+# table3 -----
+svy_tableone(design = nhs,cv=c("age"),
+             gv= c("sex","eth","edu","poverty_group","BMI_group",
+                   "alconhol","PA","smoke","HbA1c_group",
+                   "duration_group","HEI_group","kcal_group",
+                   "hypertention","TC_group","TG_group",
+                   "HDL_group","LDL_group" ),
+             by ="CDAI_group",
+             c_ci = TRUE,
+             total = TRUE,
+             round = 1,
+             xlsx = "table_2.xlsx")
+
+write.csv(a1,"a1.csv")
+
+a1 <- read.csv("all-cause.csv")
+a1 <- select_row(a1,a1$cause%in%c("no","hert","vascular"))
+
+fa1 <- select_col(a1,
+                  "seqn","sdmvpsu","sdmvstra","age",
+                  "sex","eth","poverty","CDAI",
+                  "edu","nhs_wt","status","cause","Time",
+                  "CDAI_group","BMI","hypertention",
+                  "alconhol",
+                  "PA","smoke", "HbA1c",
+                  "duration")
+bu_x <- fa1$BMI
+fa1$BMI_group[bu('(   , 25)')]<-"<30"
+fa1$BMI_group[bu('[30,      )')]<-">=30.0"
+freq_count(fa1,x="BMI_group",round = 2)
+bu_x <- fa1$duration
+fa1$duration_group[bu('(   , 10)')]<-"<10"
+fa1$duration_group[bu('[10,      )')]<-">=10.0"
+freq_count(fa1,x="duration_group",round = 2)
+bu_x <- fa1$HbA1c
+fa1$HbA1c_group[bu('(   , 7)')]<-"<7.0"
+fa1$HbA1c_group[bu('[7,      )')]<-">=7.0"
+freq_count(fa1,x="HbA1c_group",round = 2)
+bu_x <- fa1$age
+fa1$age_group[bu('(   , 60)')]<-"<60"
+fa1$age_group[bu('[60,      )')]<-">=60"
+freq_count(fa1,x="age_group",round = 2)
+fa1$eth <- Recode(fa1$eth,
+                  "Mexican American::other",
+                  "Non-Hispanic Black::other",                 
+                  "Other Hispanic::other",
+                  "Other Race - Including Multi-Racial::other")
+fa1$smoke <- Recode(fa1$smoke,
+                    "former::never/past", 
+                    "never::never/past")
+fa1$alconhol <- Recode(fa1$alconhol,
+                       "heavy::Drinker",
+                       "none::Nondrinker",
+                       "moderate::Drinker")
+bu_x <- fa1$poverty
+fa1$poverty_group[bu('(   , 3.0)')]<-"<3.0"
+fa1$poverty_group[bu('[3.0,      )')]<-">=3.0"
+freq_count(fa1,x="poverty_group",round = 2)
+
+fa1 <- drop_col(fa1,"age","poverty","BMI","HbA1c","duration" )
+dd3 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = fa1)
+f1 <- select_col(fa1,"status","Time","CDAI_group","hypertention",
+                 "alconhol","PA","smoke","BMI_group",
+                 "duration_group","HbA1c_group","age_group",
+                 "poverty_group")
+f1$hypertention <- Recode(f1$hypertention,
+                          "Yes::1",
+                          "No::0")
+f1$alconhol <- Recode(f1$alconhol,
+                      "Drinker::1",
+                      "Nondrinker::0")
+f1$PA <- Recode(f1$PA,
+                "active::1",
+                "inactive::0")
+f1$smoke <- Recode(f1$smoke,
+                   "now::1",
+                   "never/past::0")
+f1$BMI_group <- Recode(f1$BMI_group,
+                       ">=30.0::1",
+                       "<30::0")
+f1$duration_group <- Recode(f1$duration_group,
+                            ">=10.0::1",
+                            "<10::0")
+f1$HbA1c_group <- Recode(f1$HbA1c_group,
+                         ">=7.0::1",
+                         "<7.0::0")
+f1$age_group <- Recode(f1$age_group,
+                       ">=60::1",
+                       "<60::0")
+f1$poverty_group <- Recode(f1$poverty_group,
+                           ">=3.0::1",
+                           "<3.0::0")
+
+#1-建一个名为"HR","5%CI","95%CI","P"的4列表：a表。
+#用于放批量获取的结果。
+a<-c("HR","5%CI","95%CI","P")
+##2建两个for循环，第一个是批量Cox亚组分析，
+##第二个是将结果批量提取放入a表
+for(i in 4:dim(f1)[2]){ 
+  cox1<-svycoxph(Surv(time,status==0)~CDAI_group,
+                 subset=(f1[,i]=='1'),design = dd3)
+  aa<-summary(cox1)
+  for(j in 1:dim(aa$coefficients)[1]){
+    a<-rbind(a,c(round(aa$coefficients[j,2],2),
+                 round(aa$conf.int[j,3],2),
+                 round(aa$conf.int[j,4],2),
+                 round(aa$coefficients[j,5],3)))}}
+
+dd3 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = fa1)
+
+
+m1 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$sex=="Male"))
+
+summary(m1)
+
+m2 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$sex=="Female"))
+summary(m2)
+
+m3 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$eth=="other"))
+summary(m3)
+m4 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$eth=="Non-Hispanic White"))
+summary(m4)
+m5 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$hypertention=="Yes"))
+summary(m5)
+m6 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$hypertention=="No"))
+summary(m6)
+m7 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$smoke=="never/past"))
+summary(m7)
+m8 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$smoke=="now"))
+summary(m8)
+m9 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+               design = subset(dd3,fa1$alconhol=="Drinker"))
+summary(m9)
+m10 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$alconhol=="Nondrinker"))
+summary(m10)
+m11 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$PA=="inactive"))
+summary(m11)
+m12 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$PA=="active"))
+summary(m12)
+m13 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$HbA1c_group==">=7.0"))
+summary(m13)
+m14 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$HbA1c_group=="<7.0"))
+summary(m14)
+m15 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$duration_group=="<10"))
+summary(m15)
+m16 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$duration_group==">=10.0"))
+summary(m16)
+
+m17 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$age_group=="<60"))
+summary(m17)
+m18 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$age_group==">=60"))
+summary(m18)
+
+
+m19 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$BMI_group=="<30"))
+summary(m19)
+m20 <- svycoxph(Surv(Time,status==0)~CDAI_group,
+                design = subset(dd3,fa1$BMI_group==">=30.0"))
+summary(m20)
+
+colnames(fa1)
+freq_count(fa1,x="eth",round = 2)
+freq_count(fa1,x="PA",round = 2)
+freq_count(fa1,x="smoke",round = 2)
+freq_count(fa1,x="alconhol",round = 2)
+freq_count(fa1,x="hypertention",round = 2)
+
+#####no CVD history-----
+#all cause mortality-----
+dd0 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = d0)
+model0 <- svycoxph(Surv(Time,status)~CDAI_group, design = dd0)
+summary(model0)
+model1 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth, 
+                   design = dd0)
+summary(model1)
+model2 <- svycoxph(Surv(Time,status)~CDAI_group+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,, 
+                   design = dd0)
+summary(model2)
+
+model3 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+                   design = dd0)
+summary(model3)
+S2 <- svykm(Surv(Time,status==0)~CDAI_group,design = dd0)
+svy_kmplot(S2,round = 2,axis.title = 10,
+           legend.title.size = 10,
+           legend.text.size = 8,
+           risktable = TRUE,
+           freq = T,
+           weighted.prop = T,
+           rt.title.xy = NULL,
+           rt.title = "Risk Table",
+           rt.title.color = "black",
+           rt.title.size = 2,
+           rt.text.y = NULL,
+           color = NULL,
+           rt.text.size = 2)
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd0)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,3)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd0)
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI", y="HR (95%CI)")
+print(P1)
+
+d1 <- select_row(d0,!d0$cause%in%c("All other causes (residual)",
+                                   "Influenza and pneumonia (J09-J18)",
+                                   "Malignant neoplasms (C00-C97)",
+                                   "Chronic lower respiratory diseases (J40-J47)",
+                                   "Diabetes mellitus (E10-E14)",
+                                   "Alzheimer's disease (G30)", 
+                                   "Nephritis",
+                                   "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+                                   "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+                                   "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+# CVD mortality----
+#origin: 5569
+#select: 4659 (84%)
+dd1 <- svydesign(id=~1,strata = ~sdmvstra,
+                 weights = ~nhs_wt, 
+                 data = d1)
+model0 <- svycoxph(Surv(Time,status)~CDAI_group, design = dd0)
+summary(model0)
+model1 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth, 
+                   design = dd0)
+summary(model1)
+model2 <- svycoxph(Surv(Time,status)~CDAI_group+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,, 
+                   design = dd0)
+summary(model2)
+
+model3 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+                   design = dd0)
+summary(model3)
+S2 <- svykm(Surv(Time,status==0)~CDAI_group,design = dd1)
+svy_kmplot(S2,round = 2,axis.title = 10,
+           legend.title.size = 10,
+           legend.text.size = 8,
+           risktable = TRUE,
+           freq = T,
+           weighted.prop = T,
+           rt.title.xy = NULL,
+           rt.title = "Risk Table",
+           rt.title.color = "black",
+           rt.title.size = 2,
+           rt.text.y = NULL,
+           color = NULL,
+           rt.text.size = 2)
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd1)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,3)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+               design = dd1)
+r1 <- RCS(f1,log = FALSE)
+ggplot(r1)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI", y="HR (95%CI)")
+print(P1)
+
+#<24moths follw-up----
+a2 <- select_row(a1,!a1$cause%in%c("All other causes (residual)",
+                                   "Influenza and pneumonia (J09-J18)",
+                                   "Malignant neoplasms (C00-C97)",
+                                   "Chronic lower respiratory diseases (J40-J47)",
+                                   "Diabetes mellitus (E10-E14)",
+                                   "Alzheimer's disease (G30)", 
+                                   "Nephritis",
+                                   "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+                                   "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+                                   "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+s_cvd <- svydesign(id=~1,strata = ~sdmvstra,
+                   weights = ~nhs_wt, 
+                   data = a2)
+model0 <- svycoxph(Surv(Time,status)~CDAI_group, design = s_cvd)
+summary(model0)
+model1 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth, 
+                   design = s_cvd)
+summary(model1)
+model2 <- svycoxph(Surv(Time,status)~CDAI_group+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use,, 
+                   design = s_cvd)
+summary(model2)
+f1 <- svycor(design = s_cvd,~CDAI_group+age+sex+eth)
+
+model3 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use, 
+                   design = s_cvd)
+summary(model3)
+
+#adjust 饮食 -----
+carotenoid<- db_carotenoid(years = 1999:2018,
+                           day = 1,
+                           both2days = TRUE,
+                           fun = "mean",
+                           all.5 = TRUE,
+                           component = FALSE,
+                           ds = TRUE,
+                           Year = FALSE,
+                           join = "left")
+dietary <- db_driff(years = 1999:2018,
+                    day = 1,
+                    both2days = TRUE,
+                    fun = "mean",
+                    wtdrd1 = FALSE,
+                    wtdr2d = FALSE,
+                    wtdr4yr = FALSE,
+                    rstz = FALSE,
+                    breast_fed_infant = FALSE,
+                    day_of_week = FALSE,
+                    combination_food_number = FALSE,
+                    combination_food_type = FALSE,
+                    time_of_eating_occasion_hh.mm = FALSE,
+                    meal_name = FALSE,
+                    source_of_food = TRUE,
+                    eaten_at_home = FALSE,
+                    grams = FALSE,
+                    energy_kcal = FALSE,
+                    protein_g = TRUE,
+                    carbohydrate_g = TRUE,
+                    total_sugars_g = TRUE,
+                    dietary_fiber_g = TRUE,
+                    total_fat_g = TRUE,
+                    total_sfat_g = TRUE,
+                    total_mfat_g = TRUE,
+                    total_pfat_g = TRUE,
+                    cholesterol_mg = TRUE,
+                    vitamin_E_as_alpha_tocopherol_mg = TRUE,
+                    added_alpha_tocopherol_vitamin_E_mg = TRUE,
+                    retinol_mcg = TRUE,
+                    vitamin_A_rae_mcg = TRUE,
+                    alpha_carotene_mcg = TRUE,
+                    beta_carotene_mcg = TRUE,
+                    beta_cryptoxanthin_mcg = TRUE,
+                    lycopene_mcg = TRUE,
+                    lutein_zeaxanthin_mcg = TRUE,
+                    thiamin_vitamin_B1_mg = TRUE,
+                    riboflavin_vitamin_B2_mg = TRUE,
+                    niacin_mg = TRUE,
+                    vitamin_B6_mg = TRUE,
+                    total_folate_mcg = TRUE,
+                    folic_acid_mcg = TRUE,
+                    food_folate_mcg = TRUE,
+                    folate_dfe_mcg = TRUE,
+                    vitamin_B12_mcg = TRUE,
+                    added_vitamin_B12_mcg = TRUE,
+                    vitamin_C_mg = TRUE,
+                    vitamin_K_mcg = TRUE,
+                    calcium_mg = TRUE,
+                    phosphorus_mg = TRUE,
+                    magnesium_mg = TRUE,
+                    iron_mg = TRUE,
+                    zinc_mg = TRUE,
+                    copper_mg = TRUE,
+                    sodium_mg = TRUE,
+                    potassium_mg = TRUE,
+                    selenium_mcg = TRUE,
+                    caffeine_mg = TRUE,
+                    theobromine_mg = TRUE,
+                    alcohol_g = FALSE,
+                    moisture_g = TRUE,
+                    sfa_4.0_butanoic_g = FALSE,
+                    sfa_6.0_hexanoic_g = FALSE,
+                    sfa_8.0_octanoic_g = FALSE,
+                    sfa_10.0_decanoic_g = FALSE,
+                    sfa_12.0_dodecanoic_g = FALSE,
+                    sfa_14.0_tetradecanoic_g = FALSE,
+                    sfa_16.0_hexadecanoic_g = FALSE,
+                    sfa_18.0_octadecanoic_g = FALSE,
+                    mfa_16.1_hexadecenoic_g = FALSE,
+                    mfa_18.1_octadecenoic_g = FALSE,
+                    mfa_20.1_eicosenoic_g = FALSE,
+                    mfa_22.1_docosenoic_g = FALSE,
+                    pfa_18.2_octadecadienoic_g = FALSE,
+                    pfa_18.3_octadecatrienoic_g = FALSE,
+                    pfa_18.4_octadecatetraenoic_g = FALSE,
+                    pfa_20.4_eicosatetraenoic_g = FALSE,
+                    pfa_20.5_eicosapentaenoic_g = FALSE,
+                    pfa_22.5_docosapentaenoic_g = FALSE,
+                    pfa_22.6_docosahexaenoic_g = FALSE,
+                    total_choline_mg = TRUE,
+                    number_of_days = FALSE,
+                    vitamin_D_d2_d3_mcg = TRUE,
+                    Year = FALSE,
+                    join = "left")
+write.csv(dietary,"dietary.csv")
+d0 <- Left_Join(d2,dietary,carotenoid)
+dc0 <- svydesign(id=~1,strata = ~sdmvstra,
+                    weights = ~nhs_wt, 
+                    data = d0)
+
+smodel <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                   +protein_g, 
+                   design = dc0)
+summary(smodel)
+smodel1 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                     edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                     duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                   +protein_g+carbohydrate_g, 
+                   design = dc0)
+summary(smodel1)
+smodel2 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g, 
+                    design = dc0)
+summary(smodel2)
+smodel3 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g, 
+                    design = dc0)
+summary(smodel3)
+smodel4 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg, 
+                    design = dc0)
+summary(smodel4)
+smodel5 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg, 
+                    design = dc0)
+summary(smodel5)
+#
+smodel6 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg+vitamin_C_mg, 
+                    design = dc0)
+summary(smodel6)
+smodel7 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg+vitamin_C_mg
+                    +vitamin_K_mcg, 
+                    design = dc0)
+summary(smodel7)
+smodel8 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg+vitamin_C_mg
+                    +vitamin_K_mcg+calcium_mg+phosphorus_mg
+                    +iron_mg+zinc_mg+potassium_mg+
+                      selenium_mcg+total_choline_mg, 
+                    design = dc0)
+summary(smodel8)
+#
+smodel9 <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg+vitamin_C_mg
+                    +vitamin_K_mcg+calcium_mg+phosphorus_mg
+                    +iron_mg+zinc_mg+potassium_mg+
+                      selenium_mcg+total_choline_mg
+                    +carotenoid, 
+                    design = dc0)
+summary(smodel9)
+S2 <- svykm(Surv(Time,status==0)~CDAI_group,design = dc0)
+svy_kmplot(S2,round = 2,axis.title = 10,
+           legend.title.size = 10,
+           legend.text.size = 8,
+           risktable = TRUE,
+           freq = T,
+           weighted.prop = T,
+           rt.title.xy = NULL,
+           rt.title = "Risk Table",
+           rt.title.color = "black",
+           rt.title.size = 2,
+           rt.text.y = NULL,
+           color = NULL,
+           rt.text.size = 2)
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+               +protein_g+carbohydrate_g+total_sugars_g
+               +dietary_fiber_g+vitamin_A_rae_mcg
+               +lycopene_mcg+vitamin_C_mg
+               +vitamin_K_mcg+calcium_mg+phosphorus_mg
+               +iron_mg+zinc_mg+potassium_mg+
+                 selenium_mcg+total_choline_mg
+               +carotenoid,  
+               design = dc0)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,4)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+               +protein_g+carbohydrate_g+total_sugars_g
+               +dietary_fiber_g+vitamin_A_rae_mcg
+               +lycopene_mcg+vitamin_C_mg
+               +vitamin_K_mcg+calcium_mg+phosphorus_mg
+               +iron_mg+zinc_mg+potassium_mg+
+                 selenium_mcg+total_choline_mg
+               +carotenoid,  
+               design = dc0)
+r1 <- RCS(f1,log = FALSE)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "All-cause mortality", x="CDAI", y="HR (95%CI)")
+print(P1)
+# CVD ajust 饮食----
+dd0 <- select_row(d0,!d0$cause%in%c("All other causes (residual)",
+                                   "Influenza and pneumonia (J09-J18)",
+                                   "Malignant neoplasms (C00-C97)",
+                                   "Chronic lower respiratory diseases (J40-J47)",
+                                   "Diabetes mellitus (E10-E14)",
+                                   "Alzheimer's disease (G30)", 
+                                   "Nephritis",
+                                   "nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)", 
+                                   "Accidents (unintentional injuries) (V01-X59, Y85-Y86)",
+                                   "Nephritis, nephrotic syndrome and nephrosis (N00-N07, N17-N19, N25-N27)"))
+d_cvd <- svydesign(id=~1,strata = ~sdmvstra,
+                   weights = ~nhs_wt, 
+                   data = dd0)
+
+cmodel <- svycoxph(Surv(Time,status)~CDAI_group+age+sex+eth+
+                      edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                      duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+                    +protein_g+carbohydrate_g+total_sugars_g
+                    +dietary_fiber_g+vitamin_A_rae_mcg
+                    +lycopene_mcg+vitamin_C_mg
+                    +vitamin_K_mcg+calcium_mg+phosphorus_mg
+                    +iron_mg+zinc_mg+potassium_mg+
+                      selenium_mcg+total_choline_mg
+                    +carotenoid, 
+                    design = d_cvd)
+summary(cmodel)
+S2 <- svykm(Surv(Time,status==0)~CDAI_group,design = d_cvd)
+svy_kmplot(S2,round = 2,axis.title = 10,
+           legend.title.size = 10,
+           legend.text.size = 8,
+           risktable = TRUE,
+           freq = T,
+           weighted.prop = T,
+           rt.title.xy = NULL,
+           rt.title = "Risk Table",
+           rt.title.color = "black",
+           rt.title.size = 2,
+           rt.text.y = NULL,
+           color = NULL,
+           rt.text.size = 2)
+f0 <- svycoxph(Surv(Time,status)~rcs(CDAI)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+               +protein_g+carbohydrate_g+total_sugars_g
+               +dietary_fiber_g+vitamin_A_rae_mcg
+               +lycopene_mcg+vitamin_C_mg
+               +vitamin_K_mcg+calcium_mg+phosphorus_mg
+               +iron_mg+zinc_mg+potassium_mg+
+                 selenium_mcg+total_choline_mg
+               +carotenoid,  
+               design = d_cvd)
+optimal_nKnots(f0)
+f1 <- svycoxph(Surv(Time,status)~rcs(CDAI,4)+age+sex+eth+
+                 edu+poverty+BMI+hypertention+kcal+HEI+PA+smoke+
+                 duration+FBG+HbA1c+TG+TC+HDL+LDL+medicine_use
+               +protein_g+carbohydrate_g+total_sugars_g
+               +dietary_fiber_g+vitamin_A_rae_mcg
+               +lycopene_mcg+vitamin_C_mg
+               +vitamin_K_mcg+calcium_mg+phosphorus_mg
+               +iron_mg+zinc_mg+potassium_mg+
+                 selenium_mcg+total_choline_mg
+               +carotenoid,  
+               design = dc0)
+r1 <- RCS(f1,log = FALSE)
+
+P1<-ggplot()+geom_line(data=r1, aes(CDAI,yhat),linetype="solid",
+                       size=1,alpha = 0.7,colour="red")+
+  geom_ribbon(data=r1, aes(CDAI,ymin = lower, ymax = upper),
+              alpha = 0.1,fill="red")
+P1<-P1+theme_classic()+geom_hline(yintercept=1, linetype=2,size=1)+
+  labs(title = "Cardiovascular mortality", x="CDAI", y="HR (95%CI)")
+print(P1)
+
+#relative----
+nhs <- svydesign(id=~1,strata = ~sdmvstra,
+                   weights = ~nhs_wt, 
+                   data = d2)
+svycor(~CDAI+age+poverty+BMI+kcal+HEI+
+         duration+FBG+HbA1c+TG+TC+HDL+LDL,
+       design = nhs)
